@@ -49,6 +49,8 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Custom SSM read access only. Image pull (ECR) and log delivery stay on AmazonECSTaskExecutionRolePolicy above.
+# Do not add ECS deploy / PassRole / ECR push here — those belong on your GitHub Actions OIDC role, not the task execution role.
 data "aws_iam_policy_document" "ecs_execution_secrets" {
   statement {
     actions = [
