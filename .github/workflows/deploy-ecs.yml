@@ -10,6 +10,7 @@
 #   - ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage,
 #     ecr:PutImage, ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload
 #     on arn:aws:ecr:REGION:ACCOUNT:repository/ECR_REPOSITORY
+#     (Buildx issues HEAD/manifest probes; missing GetDownloadUrlForLayer or BatchGetImage often shows as 403.)
 #   - ecs:UpdateService, ecs:DescribeServices on your cluster/service ARNs (or broader for sandbox).
 #
 # Your ECS task definition should reference this ECR repository (image may use :latest;
@@ -75,6 +76,8 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
