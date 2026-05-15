@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  # Decide if this push warrants a new image + ECS rollout (avoid redeploy on docs-only commits).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_app: ${{ steps.filter.outputs.deploy_app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            deploy_app:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+              - '.dockerignore'
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -54,8 +74,8 @@ jobs:
   # Push to ECR after tests pass (push events only — not pull_request).
   # Repo secrets / vars (same as deploy-ecs.yml): AWS_ROLE_ARN secret; AWS_REGION + ECR_REPOSITORY variables.
   publish-ecr:
-    needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    needs: [test, changes]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.changes.outputs.deploy_app == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -96,7 +116,6 @@ jobs:
   # update-service — otherwise :latest + force-new-deployment can leave old images cached on EC2-backed ECS.
   deploy-ecs:
     needs: publish-ecr
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
       contents: read
