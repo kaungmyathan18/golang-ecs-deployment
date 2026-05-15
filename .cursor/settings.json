@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "deploy-on-aws": {
+      "enabled": true
+    }
+  },
+  "terraform.languageServer.rootModules": ["${workspaceFolder}/infra"]
+}
