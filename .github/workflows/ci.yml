@@ -28,7 +28,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build image (local)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -81,7 +81,7 @@ jobs:
 
       - name: Build and push image to ECR
         # ECR IAM: include ecr:GetDownloadUrlForLayer + ecr:BatchGetImage on the repo (manifest HEAD probes); see deploy-ecs.yml header.
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
