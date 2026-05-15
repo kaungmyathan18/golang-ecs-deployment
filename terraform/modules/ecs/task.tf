@@ -45,4 +45,9 @@ resource "aws_ecs_task_definition" "app" {
       }
     }
   ])
+
+  lifecycle {
+    # CI registers new revisions with an immutable ECR tag; avoid Terraform apply reverting the container image.
+    ignore_changes = [container_definitions]
+  }
 }

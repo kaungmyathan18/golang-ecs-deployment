@@ -92,8 +92,8 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
 
-  # Rolling deployment: ECS starts new tasks and drains old targets on the same ALB target group.
-  # This is not blue/green (no CodeDeploy listener weights). IAM role needs ecs:UpdateService (+ DescribeServices recommended).
+  # Rolling deployment: registers a NEW task-definition revision pinned to IMAGE:git-sha (already pushed), then
+  # update-service — otherwise :latest + force-new-deployment can leave old images cached on EC2-backed ECS.
   deploy-ecs:
     needs: publish-ecr
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -103,6 +103,7 @@ jobs:
       id-token: write
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
     steps:
@@ -112,14 +113,42 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Rolling deploy ECS service
+      - name: Register task definition (pin image to commit tag) and deploy
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          if [ -z "$ECS_CLUSTER" ] || [ -z "$ECS_SERVICE" ]; then
-            echo "::error::Set Actions variables ECS_CLUSTER and ECS_SERVICE for automated deploy."
+          set -euo pipefail
+          if [ -z "${ECS_CLUSTER}" ] || [ -z "${ECS_SERVICE}" ] || [ -z "${ECR_REPOSITORY:-}" ]; then
+            echo "::error::Set Actions variables ECS_CLUSTER, ECS_SERVICE, and ECR_REPOSITORY for deploy."
             exit 1
           fi
+
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          TD_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" --query 'services[0].taskDefinition' --output text)"
+
+          aws ecs describe-task-definition --task-definition "${TD_ARN}" --region "${AWS_REGION}" \
+            --query taskDefinition --output json | jq \
+              --arg IMAGE "${IMAGE_URI}" \
+              'del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                    .compatibilities, .registeredAt, .registeredBy)
+               | .containerDefinitions[0].image = $IMAGE' \
+              > task-def-deploy.json
+
+          OUT="$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-deploy.json \
+            --region "${AWS_REGION}" \
+            --output json)"
+          FAMILY="$(echo "${OUT}" | jq -r '.taskDefinition.family')"
+          REV="$(echo "${OUT}" | jq -r '.taskDefinition.revision')"
+
           aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${FAMILY}:${REV}" \
             --force-new-deployment \
-            --region "$AWS_REGION"
+            --region "${AWS_REGION}"
+
+          echo "Deployed ${IMAGE_URI} as ${FAMILY}:${REV}"

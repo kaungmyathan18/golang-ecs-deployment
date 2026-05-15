@@ -11,7 +11,9 @@
 #     ecr:PutImage, ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload
 #     on arn:aws:ecr:REGION:ACCOUNT:repository/ECR_REPOSITORY
 #     (Buildx issues HEAD/manifest probes; missing GetDownloadUrlForLayer or BatchGetImage often shows as 403.)
-#   - ecs:UpdateService, ecs:DescribeServices on your cluster/service ARNs (or broader for sandbox).
+#   - ecs:DescribeServices, ecs:DescribeTaskDefinition, ecs:RegisterTaskDefinition, ecs:UpdateService
+#     (RegisterTaskDefinition clones the live service task def and sets image to ECR_URI:COMMIT_SHA.)
+#   - iam:PassRole on the ECS task + execution role ARNs used by your task definition (required for RegisterTaskDefinition).
 #
 # Your ECS task definition should reference this ECR repository (image may use :latest;
 # this workflow pushes both the commit SHA tag and :latest).
@@ -82,10 +84,37 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
 
-      - name: Force new ECS deployment
+      - name: Register task definition (pin image to commit tag) and deploy
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          TD_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" \
+            --region "${AWS_REGION}" --query 'services[0].taskDefinition' --output text)"
+
+          aws ecs describe-task-definition --task-definition "${TD_ARN}" --region "${AWS_REGION}" \
+            --query taskDefinition --output json | jq \
+              --arg IMAGE "${IMAGE_URI}" \
+              'del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                    .compatibilities, .registeredAt, .registeredBy)
+               | .containerDefinitions[0].image = $IMAGE' \
+              > task-def-deploy.json
+
+          OUT="$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-deploy.json \
+            --region "${AWS_REGION}" \
+            --output json)"
+          FAMILY="$(echo "${OUT}" | jq -r '.taskDefinition.family')"
+          REV="$(echo "${OUT}" | jq -r '.taskDefinition.revision')"
+
           aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${FAMILY}:${REV}" \
             --force-new-deployment \
-            --region "$AWS_REGION"
+            --region "${AWS_REGION}"
+
+          echo "Deployed ${IMAGE_URI} as ${FAMILY}:${REV}"
