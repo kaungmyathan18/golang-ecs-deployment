@@ -6,8 +6,8 @@ resource "aws_ecs_service" "app" {
   launch_type         = "EC2"
   scheduling_strategy = "REPLICA"
 
-  deployment_minimum_healthy_percent = 100
-  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = var.ecs_deployment.minimum_healthy_percent
+  deployment_maximum_percent         = var.ecs_deployment.maximum_percent
 
   network_configuration {
     subnets          = var.private_subnet_ids

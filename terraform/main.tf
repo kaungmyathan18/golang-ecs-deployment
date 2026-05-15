@@ -6,21 +6,21 @@
 module "network" {
   source = "./modules/network"
 
-  name_prefix            = local.name_prefix
-  vpc_cidr               = var.vpc_cidr
-  public_subnet_cidrs    = var.public_subnet_cidrs
-  private_subnet_cidrs   = var.private_subnet_cidrs
-  enable_nat_gateway     = var.enable_nat_gateway
-  common_tags            = local.common_tags
+  name_prefix          = local.name_prefix
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
+  enable_nat_gateway   = var.enable_nat_gateway
+  common_tags          = local.common_tags
 }
 
 module "security_groups" {
   source = "./modules/security_groups"
 
-  name_prefix      = local.name_prefix
-  vpc_id           = module.network.vpc_id
-  container_port   = var.container_port
-  common_tags      = local.common_tags
+  name_prefix    = local.name_prefix
+  vpc_id         = module.network.vpc_id
+  container_port = var.container_port
+  common_tags    = local.common_tags
 }
 
 module "ecr" {
@@ -39,8 +39,8 @@ module "secrets" {
 module "iam" {
   source = "./modules/iam"
 
-  name_prefix            = local.name_prefix
-  secret_parameter_arns  = module.secrets.parameter_arns
+  name_prefix           = local.name_prefix
+  secret_parameter_arns = module.secrets.parameter_arns
 
   depends_on = [module.secrets]
 }
@@ -56,15 +56,15 @@ module "acm" {
 module "alb" {
   source = "./modules/alb"
 
-  name_prefix            = local.name_prefix
-  env                    = var.env
-  vpc_id                 = module.network.vpc_id
-  public_subnet_ids      = module.network.public_subnet_ids
-  alb_security_group_id  = module.security_groups.alb_security_group_id
-  container_port         = var.container_port
-  health_check_path      = var.health_check_path
-  enable_https           = local.enable_https
-  certificate_arn        = local.enable_https ? module.acm[0].certificate_arn : ""
+  name_prefix           = local.name_prefix
+  env                   = var.env
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnet_ids
+  alb_security_group_id = module.security_groups.alb_security_group_id
+  container_port        = var.container_port
+  health_check_path     = var.health_check_path
+  enable_https          = local.enable_https
+  certificate_arn       = local.enable_https ? module.acm[0].certificate_arn : ""
 }
 
 module "route53_alias" {
@@ -103,6 +103,7 @@ module "ecs" {
   ecs_asg_max_size                = var.ecs_asg_max_size
   ecs_asg_desired_capacity        = var.ecs_asg_desired_capacity
   desired_count                   = var.desired_count
+  ecs_deployment                  = var.ecs_deployment
   min_capacity                    = var.min_capacity
   max_capacity                    = var.max_capacity
   alb_arn_suffix                  = module.alb.alb_arn_suffix

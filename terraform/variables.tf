@@ -81,6 +81,21 @@ variable "desired_count" {
   default     = 1
 }
 
+variable "ecs_deployment" {
+  description = <<-EOT
+    ECS rolling deploy settings on the ECS service (mirrors aws_ecs_service deployment_* percents).
+    For desired_count = 1 on one small instance, 100%/200% can require two overlapping tasks — use minimum_healthy_percent = 0 and maximum_percent = 100 for dev-style stop-then-start.
+  EOT
+  type = object({
+    minimum_healthy_percent = number
+    maximum_percent         = number
+  })
+  default = {
+    minimum_healthy_percent = 100
+    maximum_percent         = 200
+  }
+}
+
 variable "min_capacity" {
   description = "Minimum ECS service task count for autoscaling."
   type        = number

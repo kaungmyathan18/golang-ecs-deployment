@@ -91,6 +91,14 @@ variable "desired_count" {
   type = number
 }
 
+variable "ecs_deployment" {
+  description = "Rolling deployment percentages for aws_ecs_service."
+  type = object({
+    minimum_healthy_percent = number
+    maximum_percent         = number
+  })
+}
+
 variable "min_capacity" {
   type = number
 }
