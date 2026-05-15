@@ -41,9 +41,14 @@ variable "task_memory" {
 }
 
 variable "ecs_instance_type" {
-  description = "EC2 instance type for ECS container instances. Use t3.micro or t2.micro for AWS Free Tier eligibility on qualifying accounts (typically first 12 months); caps and regions vary."
+  description = <<-EOT
+    EC2 instance type for ECS container instances (EC2 launch type, awsvpc).
+    t3.micro (1 GiB) is usually too small for task_memory 512 MiB plus ECS agent/OS,
+    and rolling deploys can briefly need two tasks on one instance (deployment_maximum_percent > 100).
+    Prefer at least t3.small for dev-sized tasks.
+  EOT
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "ecs_ami_ssm_parameter" {

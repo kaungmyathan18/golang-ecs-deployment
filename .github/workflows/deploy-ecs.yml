@@ -5,8 +5,21 @@
 #   Variables (Settings → Secrets and variables → Actions → Variables):
 #     AWS_REGION, ECR_REPOSITORY, ECS_CLUSTER, ECS_SERVICE
 #
+# IAM role permissions must include at least:
+#   - ecr:GetAuthorizationToken (resource *)
+#   - ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage,
+#     ecr:PutImage, ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload
+#     on arn:aws:ecr:REGION:ACCOUNT:repository/ECR_REPOSITORY
+#   - ecs:UpdateService, ecs:DescribeServices on your cluster/service ARNs (or broader for sandbox).
+#
 # Your ECS task definition should reference this ECR repository (image may use :latest;
 # this workflow pushes both the commit SHA tag and :latest).
+#
+# Automated deploys: merges to main/master run CI → publish-ecr → deploy-ecs (rolling) in ci.yml.
+# This workflow is an optional manual path (full build + push + deploy).
+#
+# Deployment style: ECS rolling update on one ALB target group — not CodeDeploy blue/green.
+# For blue/green (traffic shifting between two target groups), use deployment_controller CODE_DEPLOY in Terraform.
 #
 # OIDC setup: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services
 
@@ -15,8 +28,8 @@ name: Deploy to ECS
 on:
   workflow_dispatch:
   # Uncomment to deploy on every push to main:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   id-token: write
@@ -34,6 +47,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate required configuration
+        run: |
+          missing=0
+          for name in AWS_REGION ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE; do
+            eval "val=\$$name"
+            if [ -z "$val" ]; then echo "::error::Missing Actions variable $name"; missing=1; fi
+          done
+          exit "$missing"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -44,15 +66,18 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker build -t "$IMAGE_URI" -t "$REGISTRY/$ECR_REPOSITORY:latest" .
-          docker push "$IMAGE_URI"
-          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build, tag, and push image to ECR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
 
       - name: Force new ECS deployment
         run: |

@@ -119,6 +119,7 @@ func setupRouter(
 	r.Use(observability.TracingMiddleware)
 
 	r.Route("/health", func(sr chi.Router) {
+		sr.Get("/", health.Live) // ALB default path /health (same handler as /health/live)
 		sr.Get("/live", health.Live)
 		sr.Get("/ready", health.Ready)
 	})
