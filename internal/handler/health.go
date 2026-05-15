@@ -29,7 +29,7 @@ func (h *HealthHandler) Live(w http.ResponseWriter, r *http.Request) {
 func (h *HealthHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	checks := map[string]string{"self": "healthy", "version": "1.3.0"}
+	checks := map[string]string{"self": "healthy", "version": "1.4.0"}
 	_ = checkCtx
 
 	status := http.StatusOK
