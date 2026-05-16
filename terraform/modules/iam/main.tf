@@ -42,6 +42,11 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
 resource "aws_iam_role" "ecs_execution" {
   name               = "${var.name_prefix}-ecs-execution-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
+
+  # After attachments are removed, ensure this role is fully deleted before the
+  # custom policy. Parallel deletes can race IAM propagation and return
+  # DeleteConflict on the policy.
+  depends_on = [aws_iam_policy.ecs_execution_secrets]
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
